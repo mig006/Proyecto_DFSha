@@ -1,0 +1,7 @@
+# Lo que no entra a la imagen de Docker
+.git
+docs
+deploy/certs
+deploy/.env
+deploy/local/files
+**/__pycache__

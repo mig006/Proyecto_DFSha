@@ -1,0 +1,18 @@
+# Secretos y certificados: NUNCA al repositorio
+deploy/.env
+deploy/certs/
+*.pem
+*.key
+
+# Archivos de prueba y datos
+deploy/local/files/
+data/
+tests/resultados_*.csv
+*.bin
+*.out
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

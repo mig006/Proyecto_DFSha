@@ -3,6 +3,8 @@
 # Uso:  bash deploy/gen_certs.sh [IP1 IP2 IP3 ...]
 # Pasa las IPs privadas de las EC2 para que el certificado sea válido en AWS.
 set -euo pipefail
+# En Git Bash (Windows) evita que "/CN=..." se convierta en una ruta de Windows.
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")"
 mkdir -p certs && cd certs
 

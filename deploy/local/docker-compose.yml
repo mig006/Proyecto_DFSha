@@ -1,0 +1,121 @@
+# Clúster completo en UNA máquina (para desarrollo y pruebas locales).
+# Uso:
+#   bash deploy/gen_certs.sh                        # una sola vez
+#   cp deploy/.env.example deploy/.env              # y cambie los secretos
+#   docker compose -f deploy/local/docker-compose.yml up -d --build
+#   bash deploy/local/dfs.sh login miguel
+x-etcd: &etcd
+  image: quay.io/coreos/etcd:v3.5.17
+  restart: unless-stopped
+  command: [/usr/local/bin/etcd]
+
+# etcd se configura con variables ETCD_* (equivalen a sus flags). TLS en cliente y entre pares.
+x-etcd-env: &etcd_env
+  ETCD_DATA_DIR: /data
+  ETCD_CERT_FILE: /certs/node.crt
+  ETCD_KEY_FILE: /certs/node.key
+  ETCD_TRUSTED_CA_FILE: /certs/ca.crt
+  ETCD_CLIENT_CERT_AUTH: "true"
+  ETCD_PEER_CERT_FILE: /certs/node.crt
+  ETCD_PEER_KEY_FILE: /certs/node.key
+  ETCD_PEER_TRUSTED_CA_FILE: /certs/ca.crt
+  ETCD_PEER_CLIENT_CERT_AUTH: "true"
+  ETCD_INITIAL_CLUSTER: etcd1=https://etcd1:2380,etcd2=https://etcd2:2380,etcd3=https://etcd3:2380
+  ETCD_INITIAL_CLUSTER_STATE: new
+  ETCD_LISTEN_CLIENT_URLS: https://0.0.0.0:2379
+  ETCD_LISTEN_PEER_URLS: https://0.0.0.0:2380
+
+x-app: &app
+  build: {context: ../.., dockerfile: deploy/Dockerfile}
+  image: dfsha:latest
+  env_file: ../.env
+  volumes: ["../certs:/certs:ro"]
+  restart: unless-stopped
+  environment: &appenv
+    DFS_CA: /certs/ca.crt
+    DFS_CERT: /certs/node.crt
+    DFS_KEY: /certs/node.key
+    DFS_ETCD: https://etcd1:2379,https://etcd2:2379,https://etcd3:2379
+    DFS_META: https://meta1:8001,https://meta2:8001
+
+x-meta-cmd: &meta_cmd uvicorn control.meta:app --host 0.0.0.0 --port 8001 --ssl-keyfile /certs/node.key --ssl-certfile /certs/node.crt
+x-dn-cmd: &dn_cmd uvicorn datanode.datanode:app --host 0.0.0.0 --port 9001 --ssl-keyfile /certs/node.key --ssl-certfile /certs/node.crt
+
+services:
+  etcd1:
+    <<: *etcd
+    container_name: dfs-etcd1
+    environment:
+      <<: *etcd_env
+      ETCD_NAME: etcd1
+      ETCD_ADVERTISE_CLIENT_URLS: https://etcd1:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: https://etcd1:2380
+    volumes: ["../certs:/certs:ro", "etcd1:/data"]
+  etcd2:
+    <<: *etcd
+    container_name: dfs-etcd2
+    environment:
+      <<: *etcd_env
+      ETCD_NAME: etcd2
+      ETCD_ADVERTISE_CLIENT_URLS: https://etcd2:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: https://etcd2:2380
+    volumes: ["../certs:/certs:ro", "etcd2:/data"]
+  etcd3:
+    <<: *etcd
+    container_name: dfs-etcd3
+    environment:
+      <<: *etcd_env
+      ETCD_NAME: etcd3
+      ETCD_ADVERTISE_CLIENT_URLS: https://etcd3:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: https://etcd3:2380
+    volumes: ["../certs:/certs:ro", "etcd3:/data"]
+
+
+  meta1:
+    <<: *app
+    container_name: dfs-meta1
+    command: *meta_cmd
+    environment: {<<: *appenv, DFS_META_ID: meta1}
+    depends_on: [etcd1, etcd2, etcd3]
+  meta2:
+    <<: *app
+    container_name: dfs-meta2
+    command: *meta_cmd
+    environment: {<<: *appenv, DFS_META_ID: meta2}
+    depends_on: [etcd1, etcd2, etcd3]
+
+  dn1:
+    <<: *app
+    container_name: dfs-dn1
+    command: *dn_cmd
+    environment: {<<: *appenv, DFS_NODE_ID: dn1, DFS_NODE_URL: "https://dn1:9001", DFS_DATA_DIR: /data}
+    volumes: ["../certs:/certs:ro", "dn1:/data"]
+  dn2:
+    <<: *app
+    container_name: dfs-dn2
+    command: *dn_cmd
+    environment: {<<: *appenv, DFS_NODE_ID: dn2, DFS_NODE_URL: "https://dn2:9001", DFS_DATA_DIR: /data}
+    volumes: ["../certs:/certs:ro", "dn2:/data"]
+  dn3:
+    <<: *app
+    container_name: dfs-dn3
+    command: *dn_cmd
+    environment: {<<: *appenv, DFS_NODE_ID: dn3, DFS_NODE_URL: "https://dn3:9001", DFS_DATA_DIR: /data}
+    volumes: ["../certs:/certs:ro", "dn3:/data"]
+  dn4:
+    <<: *app
+    container_name: dfs-dn4
+    command: *dn_cmd
+    environment: {<<: *appenv, DFS_NODE_ID: dn4, DFS_NODE_URL: "https://dn4:9001", DFS_DATA_DIR: /data}
+    volumes: ["../certs:/certs:ro", "dn4:/data"]
+
+  # Cliente: se usa con "docker compose run --rm client ..."
+  client:
+    <<: *app
+    container_name: dfs-client
+    profiles: [client]
+    restart: "no"
+    command: python src/client/dfs.py --help
+    environment: {<<: *appenv, DFS_SESSION: /tmp/session.json, DFS_TEST_TMP: /tmp}
+
+volumes: {etcd1: {}, etcd2: {}, etcd3: {}, dn1: {}, dn2: {}, dn3: {}, dn4: {}}
